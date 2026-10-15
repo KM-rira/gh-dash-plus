@@ -422,6 +422,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, m.switchSelectedView())
 			}
 		case m.ctx.View == config.PRsView:
+			if prview.IsCheckRunKey(msg) {
+				m.prView, cmd = m.prView.Update(msg)
+				m.syncSidebar()
+				return m, cmd
+			}
 			switch {
 			case key.Matches(msg, keys.PRKeys.PrevSidebarTab),
 				key.Matches(msg, keys.PRKeys.NextSidebarTab):

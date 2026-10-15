@@ -456,6 +456,15 @@ func TestViewCheckRunSummary_GroupsStatuses(t *testing.T) {
 	require.Contains(t, got, "build")
 }
 
+func TestCheckRunURLByNumber(t *testing.T) {
+	run := makeCheckRun("build", "COMPLETED", "SUCCESS")
+	run.DetailsUrl = "https://github.com/owner/repo/actions/runs/123"
+	m := newTestModelForChecks(t, checksTestOptions{checkRuns: []data.CheckRun{run}})
+	require.Equal(t, string(run.DetailsUrl), m.checkRunURL(1))
+	require.Empty(t, m.checkRunURL(2))
+	require.Empty(t, m.checkRunURL(0))
+}
+
 func TestGetChecksStats_AwaitingApproval(t *testing.T) {
 	// Test that getChecksStats correctly counts awaiting approval
 	opts := checksTestOptions{

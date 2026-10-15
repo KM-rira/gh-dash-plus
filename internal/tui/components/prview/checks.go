@@ -147,6 +147,7 @@ func (m *Model) viewCheckRunSummary() string {
 		name   string
 		detail string
 		icon   string
+		number int
 	}
 	groups := []struct {
 		title string
@@ -158,14 +159,13 @@ func (m *Model) viewCheckRunSummary() string {
 		{title: "Successful checks"},
 		{title: "Other checks"},
 	}
-	add := func(group int, name, detail, icon string) {
-		groups[group].items = append(groups[group].items, item{name, detail, icon})
-	}
 	lastCommit := commits[0].Commit
+	checkNumber := 0
 	for _, node := range lastCommit.StatusCheckRollup.Contexts.Nodes {
 		switch node.Typename {
 		case "CheckRun":
 			run := node.CheckRun
+			checkNumber++
 			name := renderCheckRunName(run)
 			state := string(run.Conclusion)
 			if ghchecks.IsStatusWaiting(string(run.Status)) {
@@ -177,7 +177,7 @@ func (m *Model) viewCheckRunSummary() string {
 				if elapsed != "" {
 					detail = "Started " + elapsed + " ago — " + detail
 				}
-				add(2, name, detail, m.ctx.Styles.Common.WaitingGlyph)
+				groups[2].items = append(groups[2].items, item{name, detail, m.ctx.Styles.Common.WaitingGlyph, checkNumber})
 			} else {
 				duration := ""
 				if !run.StartedAt.IsZero() && !run.CompletedAt.IsZero() {
@@ -189,29 +189,37 @@ func (m *Model) viewCheckRunSummary() string {
 					if duration != "" {
 						detail += " after " + duration
 					}
-					add(0, name, detail, m.ctx.Styles.Common.FailureGlyph)
+					groups[0].items = append(groups[0].items, item{name, detail, m.ctx.Styles.Common.FailureGlyph, checkNumber})
 				case ghchecks.IsConclusionASkip(state):
-					add(1, name, "Skipped", m.ctx.Styles.Common.WaitingGlyph)
+					groups[1].items = append(groups[1].items, item{name, "Skipped", m.ctx.Styles.Common.WaitingGlyph, checkNumber})
 				case ghchecks.IsConclusionASuccess(state):
 					detail := "Successful"
 					if duration != "" {
 						detail += " in " + duration
 					}
-					add(3, name, detail, m.ctx.Styles.Common.SuccessGlyph)
+					groups[3].items = append(groups[3].items, item{name, detail, m.ctx.Styles.Common.SuccessGlyph, checkNumber})
 				default:
-					add(4, name, state, m.ctx.Styles.Common.WaitingGlyph)
+					groups[4].items = append(groups[4].items, item{name, state, m.ctx.Styles.Common.WaitingGlyph, checkNumber})
 				}
 			}
 		case "StatusContext":
 			ctx := node.StatusContext
 			category, icon := m.renderStatusContextConclusion(ctx)
 			group := 3
-			if category == CheckFailure {
+			switch category {
+			case CheckFailure:
 				group = 0
-			} else if category == CheckWaiting {
+			case CheckWaiting:
 				group = 2
 			}
-			add(group, renderStatusContextName(ctx), strings.TrimSpace(string(ctx.Description)), icon)
+			groups[group].items = append(
+				groups[group].items,
+				item{
+					name:   renderStatusContextName(ctx),
+					detail: strings.TrimSpace(string(ctx.Description)),
+					icon:   icon,
+				},
+			)
 		}
 	}
 
@@ -222,7 +230,11 @@ func (m *Model) viewCheckRunSummary() string {
 		}
 		parts = append(parts, lipgloss.NewStyle().Bold(true).Render(group.title))
 		for _, entry := range group.items {
-			line := lipgloss.JoinHorizontal(lipgloss.Top, entry.icon, " ", entry.name)
+			name := entry.name
+			if entry.number > 0 {
+				name += lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).Render(fmt.Sprintf(" [%d]", entry.number))
+			}
+			line := lipgloss.JoinHorizontal(lipgloss.Top, entry.icon, " ", name)
 			if entry.detail != "" {
 				line = lipgloss.JoinVertical(lipgloss.Left, line,
 					lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).MarginLeft(2).Render(entry.detail))
@@ -230,7 +242,31 @@ func (m *Model) viewCheckRunSummary() string {
 			parts = append(parts, lipgloss.NewStyle().MarginLeft(2).Render(line))
 		}
 	}
+	if checkNumber > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).Render("Press a number to open that check run in your browser"))
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+func (m *Model) checkRunURL(number int) string {
+	if number < 1 || number > 9 || m.pr == nil || m.pr.Data == nil {
+		return ""
+	}
+	commits := m.pr.Data.Enriched.Commits.Nodes
+	if len(commits) == 0 {
+		return ""
+	}
+	current := 0
+	for _, node := range commits[0].Commit.StatusCheckRollup.Contexts.Nodes {
+		if node.Typename != "CheckRun" {
+			continue
+		}
+		current++
+		if current == number {
+			return string(node.CheckRun.DetailsUrl)
+		}
+	}
+	return ""
 }
 
 func formatCheckElapsed(duration time.Duration) string {

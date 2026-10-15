@@ -114,6 +114,7 @@ type CheckRun struct {
 	Name        graphql.String
 	Status      graphql.String
 	Conclusion  checks.CheckRunState
+	DetailsUrl  graphql.String
 	StartedAt   time.Time
 	CompletedAt time.Time
 	CheckSuite  struct {

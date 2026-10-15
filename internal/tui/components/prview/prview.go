@@ -3,12 +3,14 @@ package prview
 import (
 	"fmt"
 	"image/color"
+	"io"
 	"regexp"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/cli/go-gh/v2/pkg/browser"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/data"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
@@ -116,6 +118,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if m.carousel.SelectedItem() == tabs[0] {
+			if IsCheckRunKey(keyMsg) {
+				return m, m.openCheckRun(int(keyMsg.String()[0] - '0'))
+			}
+		}
 		switch {
 		case key.Matches(keyMsg, keys.PRKeys.PrevSidebarTab):
 			m.carousel.MoveLeft()
@@ -125,6 +132,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+type checkRunBrowserOpenedMsg struct{ err error }
+
+func (m *Model) openCheckRun(number int) tea.Cmd {
+	url := m.checkRunURL(number)
+	if url == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		b := browser.New("", io.Discard, io.Discard)
+		return checkRunBrowserOpenedMsg{err: b.Browse(url)}
+	}
 }
 
 func (m Model) View() string {
