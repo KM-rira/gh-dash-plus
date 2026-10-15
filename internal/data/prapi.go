@@ -111,10 +111,12 @@ type LastCommitStatus struct {
 }
 
 type CheckRun struct {
-	Name       graphql.String
-	Status     graphql.String
-	Conclusion checks.CheckRunState
-	CheckSuite struct {
+	Name        graphql.String
+	Status      graphql.String
+	Conclusion  checks.CheckRunState
+	StartedAt   time.Time
+	CompletedAt time.Time
+	CheckSuite  struct {
 		Creator struct {
 			Login graphql.String
 		}
@@ -127,9 +129,11 @@ type CheckRun struct {
 }
 
 type StatusContext struct {
-	Context graphql.String
-	State   graphql.String
-	Creator struct {
+	Context     graphql.String
+	State       graphql.String
+	Description graphql.String
+	UpdatedAt   time.Time
+	Creator     struct {
 		Login graphql.String
 	}
 }
