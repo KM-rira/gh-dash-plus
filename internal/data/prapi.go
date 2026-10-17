@@ -2,6 +2,7 @@ package data
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -111,6 +112,7 @@ type LastCommitStatus struct {
 }
 
 type CheckRun struct {
+	DatabaseId  json.Number
 	Name        graphql.String
 	Status      graphql.String
 	Conclusion  checks.CheckRunState

@@ -1,6 +1,7 @@
 package prview
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -463,6 +464,19 @@ func TestCheckRunURLByNumber(t *testing.T) {
 	require.Equal(t, string(run.DetailsUrl), m.checkRunURL(1))
 	require.Empty(t, m.checkRunURL(2))
 	require.Empty(t, m.checkRunURL(0))
+}
+
+func TestCheckRunLogArgs(t *testing.T) {
+	run := makeCheckRun("build", "COMPLETED", "SUCCESS")
+	run.DatabaseId = json.Number("116516974287")
+	run.CheckSuite.WorkflowRun.Workflow.Name = "CI"
+	require.Equal(t,
+		[]string{"run", "view", "--log", "--job", "116516974287", "-R", "owner/repo"},
+		checkRunLogArgs(run, "owner/repo"),
+	)
+
+	run.CheckSuite.WorkflowRun.Workflow.Name = ""
+	require.Nil(t, checkRunLogArgs(run, "owner/repo"))
 }
 
 func TestGetChecksStats_AwaitingApproval(t *testing.T) {

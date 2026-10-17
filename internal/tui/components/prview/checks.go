@@ -243,18 +243,28 @@ func (m *Model) viewCheckRunSummary() string {
 		}
 	}
 	if checkNumber > 0 {
-		parts = append(parts, lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).Render("Press a number to open that check run in your browser"))
+		hint := lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).
+			Render("Press a number to view logs; q returns to the TUI")
+		parts = append(parts, hint)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
 func (m *Model) checkRunURL(number int) string {
-	if number < 1 || number > 9 || m.pr == nil || m.pr.Data == nil {
+	run, ok := m.checkRun(number)
+	if !ok {
 		return ""
+	}
+	return string(run.DetailsUrl)
+}
+
+func (m *Model) checkRun(number int) (data.CheckRun, bool) {
+	if number < 1 || number > 9 || m.pr == nil || m.pr.Data == nil || m.pr.Data.Primary == nil {
+		return data.CheckRun{}, false
 	}
 	commits := m.pr.Data.Enriched.Commits.Nodes
 	if len(commits) == 0 {
-		return ""
+		return data.CheckRun{}, false
 	}
 	current := 0
 	for _, node := range commits[0].Commit.StatusCheckRollup.Contexts.Nodes {
@@ -263,10 +273,21 @@ func (m *Model) checkRunURL(number int) string {
 		}
 		current++
 		if current == number {
-			return string(node.CheckRun.DetailsUrl)
+			return node.CheckRun, true
 		}
 	}
-	return ""
+	return data.CheckRun{}, false
+}
+
+func checkRunLogArgs(run data.CheckRun, repo string) []string {
+	jobID := run.DatabaseId.String()
+	workflowName := strings.TrimSpace(string(run.CheckSuite.WorkflowRun.Workflow.Name))
+	if jobID == "" || jobID == "0" || workflowName == "" || repo == "" {
+		return nil
+	}
+	return []string{
+		"run", "view", "--log", "--job", jobID, "-R", repo,
+	}
 }
 
 func formatCheckElapsed(duration time.Duration) string {

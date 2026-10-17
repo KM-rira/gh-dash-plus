@@ -99,6 +99,11 @@ func TestIsCheckRunKey(t *testing.T) {
 	require.False(t, IsCheckRunKey(tea.KeyPressMsg{Text: "x"}))
 }
 
+func TestEnvWithOverride(t *testing.T) {
+	env := envWithOverride([]string{"PATH=/bin", "GH_PAGER=cat"}, "GH_PAGER", "less -R")
+	require.Equal(t, []string{"PATH=/bin", "GH_PAGER=less -R"}, env)
+}
+
 func TestIsTextInputBoxFocusedWhenCommenting(t *testing.T) {
 	m := newTestModelForAction(t)
 	cmd := m.SetIsCommenting(true)

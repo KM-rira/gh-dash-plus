@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image/color"
 	"io"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 
@@ -137,7 +139,23 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 type checkRunBrowserOpenedMsg struct{ err error }
 
 func (m *Model) openCheckRun(number int) tea.Cmd {
-	url := m.checkRunURL(number)
+	run, ok := m.checkRun(number)
+	if !ok {
+		return nil
+	}
+
+	if args := checkRunLogArgs(run, m.pr.Data.Primary.Repository.NameWithOwner); len(args) > 0 {
+		command := exec.Command("gh", args...)
+		command.Env = envWithOverride(os.Environ(), "GH_PAGER", "less -R")
+		return tea.ExecProcess(command, func(err error) tea.Msg {
+			if err != nil {
+				return constants.ErrMsg{Err: fmt.Errorf("viewing CI logs: %w", err)}
+			}
+			return nil
+		})
+	}
+
+	url := string(run.DetailsUrl)
 	if url == "" {
 		return nil
 	}
@@ -145,6 +163,17 @@ func (m *Model) openCheckRun(number int) tea.Cmd {
 		b := browser.New("", io.Discard, io.Discard)
 		return checkRunBrowserOpenedMsg{err: b.Browse(url)}
 	}
+}
+
+func envWithOverride(env []string, key, value string) []string {
+	prefix := key + "="
+	result := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
+		}
+	}
+	return append(result, prefix+value)
 }
 
 func (m Model) View() string {
