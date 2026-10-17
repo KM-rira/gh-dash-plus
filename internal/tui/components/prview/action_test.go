@@ -92,6 +92,18 @@ func TestMsgToActionReturnsNilForUnknownKeys(t *testing.T) {
 	require.Nil(t, action, "expected nil action for unknown key")
 }
 
+func TestIsCheckRunKey(t *testing.T) {
+	require.True(t, IsCheckRunKey(tea.KeyPressMsg{Code: '1'}))
+	require.True(t, IsCheckRunKey(tea.KeyPressMsg{Code: '9'}))
+	require.False(t, IsCheckRunKey(tea.KeyPressMsg{Code: '0'}))
+	require.False(t, IsCheckRunKey(tea.KeyPressMsg{Text: "x"}))
+}
+
+func TestEnvWithOverride(t *testing.T) {
+	env := envWithOverride([]string{"PATH=/bin", "GH_PAGER=cat"}, "GH_PAGER", "less -R")
+	require.Equal(t, []string{"PATH=/bin", "GH_PAGER=less -R"}, env)
+}
+
 func TestIsTextInputBoxFocusedWhenCommenting(t *testing.T) {
 	m := newTestModelForAction(t)
 	cmd := m.SetIsCommenting(true)

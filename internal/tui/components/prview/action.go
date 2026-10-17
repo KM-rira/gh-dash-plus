@@ -73,3 +73,13 @@ func MsgToAction(msg tea.Msg) *PRAction {
 
 	return nil
 }
+
+// IsCheckRunKey reports whether msg is a number key used to open a check run.
+func IsCheckRunKey(msg tea.Msg) bool {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return false
+	}
+	key := keyMsg.String()
+	return len(key) == 1 && key[0] >= '1' && key[0] <= '9'
+}

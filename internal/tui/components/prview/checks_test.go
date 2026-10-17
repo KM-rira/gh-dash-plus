@@ -1,6 +1,7 @@
 package prview
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -422,6 +423,7 @@ func TestRenderChecks_InProgressChecks(t *testing.T) {
 
 	m := newTestModelForChecks(t, opts)
 	got := m.renderChecks()
+	require.Contains(t, got, "In Progress Checks (2)")
 
 	// Should show both checks
 	require.True(t, strings.Contains(got, "build"),
@@ -432,6 +434,49 @@ func TestRenderChecks_InProgressChecks(t *testing.T) {
 	// Should have waiting icon for in-progress checks
 	require.True(t, strings.Contains(got, constants.WaitingIcon),
 		"expected WaitingIcon for in-progress checks, got: %q", got)
+}
+
+func TestViewCheckRunSummary_GroupsStatuses(t *testing.T) {
+	m := newTestModelForChecks(t, checksTestOptions{
+		checkRuns: []data.CheckRun{
+			makeCheckRun("lint", "COMPLETED", "FAILURE"),
+			makeCheckRun("docs", "COMPLETED", "SKIPPED"),
+			makeCheckRun("build", "COMPLETED", "SUCCESS"),
+			makeCheckRun("test", "IN_PROGRESS", ""),
+		},
+	})
+
+	got := m.viewCheckRunSummary()
+	require.Contains(t, got, "Failing checks")
+	require.Contains(t, got, "lint")
+	require.Contains(t, got, "Skipped checks")
+	require.Contains(t, got, "docs")
+	require.Contains(t, got, "In progress checks")
+	require.Contains(t, got, "test")
+	require.Contains(t, got, "Successful checks")
+	require.Contains(t, got, "build")
+}
+
+func TestCheckRunURLByNumber(t *testing.T) {
+	run := makeCheckRun("build", "COMPLETED", "SUCCESS")
+	run.DetailsUrl = "https://github.com/owner/repo/actions/runs/123"
+	m := newTestModelForChecks(t, checksTestOptions{checkRuns: []data.CheckRun{run}})
+	require.Equal(t, string(run.DetailsUrl), m.checkRunURL(1))
+	require.Empty(t, m.checkRunURL(2))
+	require.Empty(t, m.checkRunURL(0))
+}
+
+func TestCheckRunLogArgs(t *testing.T) {
+	run := makeCheckRun("build", "COMPLETED", "SUCCESS")
+	run.DatabaseId = json.Number("116516974287")
+	run.CheckSuite.WorkflowRun.Workflow.Name = "CI"
+	require.Equal(t,
+		[]string{"run", "view", "--log", "--job", "116516974287", "-R", "owner/repo"},
+		checkRunLogArgs(run, "owner/repo"),
+	)
+
+	run.CheckSuite.WorkflowRun.Workflow.Name = ""
+	require.Nil(t, checkRunLogArgs(run, "owner/repo"))
 }
 
 func TestGetChecksStats_AwaitingApproval(t *testing.T) {

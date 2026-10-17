@@ -3,12 +3,16 @@ package prview
 import (
 	"fmt"
 	"image/color"
+	"io"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/cli/go-gh/v2/pkg/browser"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/data"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
@@ -116,6 +120,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if m.carousel.SelectedItem() == tabs[0] {
+			if IsCheckRunKey(keyMsg) {
+				return m, m.openCheckRun(int(keyMsg.String()[0] - '0'))
+			}
+		}
 		switch {
 		case key.Matches(keyMsg, keys.PRKeys.PrevSidebarTab):
 			m.carousel.MoveLeft()
@@ -125,6 +134,55 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+type checkRunBrowserOpenedMsg struct{ err error }
+
+func (m *Model) openCheckRun(number int) tea.Cmd {
+	run, ok := m.checkRun(number)
+	if !ok {
+		return nil
+	}
+
+	if args := checkRunLogArgs(run, m.pr.Data.Primary.Repository.NameWithOwner); len(args) > 0 {
+		// gh writes the run log to stdout when it is piped, so send that output
+		// directly to lnav while keeping lnav attached to the TUI's terminal.
+		commandArgs := append(
+			[]string{
+				"-c",
+				`gh "$@" | perl -pe 's/\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\b/\e[1;36m$1\e[0m/g; s/\b(error|failed|failure|fatal|exception)\b/\e[1;31m$1\e[0m/ig; s/\b(warning|warn)\b/\e[1;33m$1\e[0m/ig' | lnav -c ':switch-to-view text'`,
+				"gh",
+			},
+			args...)
+		command := exec.Command("sh", commandArgs...)
+		command.Env = envWithOverride(os.Environ(), "GH_PAGER", "cat")
+		return tea.ExecProcess(command, func(err error) tea.Msg {
+			if err != nil {
+				return constants.ErrMsg{Err: fmt.Errorf("viewing CI logs: %w", err)}
+			}
+			return nil
+		})
+	}
+
+	url := string(run.DetailsUrl)
+	if url == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		b := browser.New("", io.Discard, io.Discard)
+		return checkRunBrowserOpenedMsg{err: b.Browse(url)}
+	}
+}
+
+func envWithOverride(env []string, key, value string) []string {
+	prefix := key + "="
+	result := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
+		}
+	}
+	return append(result, prefix+value)
 }
 
 func (m Model) View() string {

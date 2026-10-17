@@ -2,6 +2,7 @@ package data
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -111,10 +112,14 @@ type LastCommitStatus struct {
 }
 
 type CheckRun struct {
-	Name       graphql.String
-	Status     graphql.String
-	Conclusion checks.CheckRunState
-	CheckSuite struct {
+	DatabaseId  json.Number
+	Name        graphql.String
+	Status      graphql.String
+	Conclusion  checks.CheckRunState
+	DetailsUrl  graphql.String
+	StartedAt   time.Time
+	CompletedAt time.Time
+	CheckSuite  struct {
 		Creator struct {
 			Login graphql.String
 		}
@@ -127,9 +132,11 @@ type CheckRun struct {
 }
 
 type StatusContext struct {
-	Context graphql.String
-	State   graphql.String
-	Creator struct {
+	Context     graphql.String
+	State       graphql.String
+	Description graphql.String
+	UpdatedAt   time.Time
+	Creator     struct {
 		Login graphql.String
 	}
 }

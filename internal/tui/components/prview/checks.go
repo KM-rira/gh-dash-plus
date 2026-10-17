@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 
@@ -124,14 +125,210 @@ func (m *Model) viewChecksStatus() (string, checkSectionStatus) {
 	}
 	if title != "" {
 		checksBar := m.viewChecksBar()
+		checkDetails := m.viewCheckRunSummary()
 		checksBottom := lipgloss.JoinVertical(
 			lipgloss.Left,
 			strings.Join(statStrs, ", "),
 			checksBar,
+			checkDetails,
 		)
 		checks = m.viewCheckCategory(icon, title, checksBottom, false)
 	}
 	return checks, status
+}
+
+func (m *Model) viewCheckRunSummary() string {
+	commits := m.pr.Data.Enriched.Commits.Nodes
+	if len(commits) == 0 {
+		return ""
+	}
+
+	type item struct {
+		name   string
+		detail string
+		icon   string
+		number int
+	}
+	groups := []struct {
+		title string
+		items []item
+	}{
+		{title: "Failing checks"},
+		{title: "Skipped checks"},
+		{title: "In progress checks"},
+		{title: "Successful checks"},
+		{title: "Other checks"},
+	}
+	lastCommit := commits[0].Commit
+	checkNumber := 0
+	for _, node := range lastCommit.StatusCheckRollup.Contexts.Nodes {
+		switch node.Typename {
+		case "CheckRun":
+			run := node.CheckRun
+			checkNumber++
+			name := renderCheckRunName(run)
+			state := string(run.Conclusion)
+			if ghchecks.IsStatusWaiting(string(run.Status)) {
+				elapsed := ""
+				if !run.StartedAt.IsZero() {
+					elapsed = formatCheckElapsed(time.Since(run.StartedAt))
+				}
+				detail := "This check has started..."
+				if elapsed != "" {
+					detail = "Started " + elapsed + " ago — " + detail
+				}
+				groups[2].items = append(
+					groups[2].items,
+					item{name, detail, m.ctx.Styles.Common.WaitingGlyph, checkNumber},
+				)
+			} else {
+				duration := ""
+				if !run.StartedAt.IsZero() && !run.CompletedAt.IsZero() {
+					duration = formatCheckElapsed(run.CompletedAt.Sub(run.StartedAt))
+				}
+				switch {
+				case ghchecks.IsConclusionAFailure(state):
+					detail := "Failing"
+					if duration != "" {
+						detail += " after " + duration
+					}
+					groups[0].items = append(
+						groups[0].items,
+						item{name, detail, m.ctx.Styles.Common.FailureGlyph, checkNumber},
+					)
+				case ghchecks.IsConclusionASkip(state):
+					groups[1].items = append(
+						groups[1].items,
+						item{name, "Skipped", m.ctx.Styles.Common.WaitingGlyph, checkNumber},
+					)
+				case ghchecks.IsConclusionASuccess(state):
+					detail := "Successful"
+					if duration != "" {
+						detail += " in " + duration
+					}
+					groups[3].items = append(
+						groups[3].items,
+						item{name, detail, m.ctx.Styles.Common.SuccessGlyph, checkNumber},
+					)
+				default:
+					groups[4].items = append(
+						groups[4].items,
+						item{name, state, m.ctx.Styles.Common.WaitingGlyph, checkNumber},
+					)
+				}
+			}
+		case "StatusContext":
+			ctx := node.StatusContext
+			category, icon := m.renderStatusContextConclusion(ctx)
+			group := 3
+			switch category {
+			case CheckFailure:
+				group = 0
+			case CheckWaiting:
+				group = 2
+			}
+			groups[group].items = append(
+				groups[group].items,
+				item{
+					name:   renderStatusContextName(ctx),
+					detail: strings.TrimSpace(string(ctx.Description)),
+					icon:   icon,
+				},
+			)
+		}
+	}
+
+	parts := make([]string, 0)
+	for _, group := range groups {
+		if len(group.items) == 0 {
+			continue
+		}
+		parts = append(parts, lipgloss.NewStyle().Bold(true).Render(group.title))
+		for _, entry := range group.items {
+			name := entry.name
+			if entry.number > 0 {
+				name += lipgloss.NewStyle().
+					Foreground(m.ctx.Theme.FaintText).
+					Render(fmt.Sprintf(" [%d]", entry.number))
+			}
+			line := lipgloss.JoinHorizontal(lipgloss.Top, entry.icon, " ", name)
+			if entry.detail != "" {
+				line = lipgloss.JoinVertical(
+					lipgloss.Left,
+					line,
+					lipgloss.NewStyle().
+						Foreground(m.ctx.Theme.FaintText).
+						MarginLeft(2).
+						Render(entry.detail),
+				)
+			}
+			parts = append(parts, lipgloss.NewStyle().MarginLeft(2).Render(line))
+		}
+	}
+	if checkNumber > 0 {
+		hint := lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).
+			Render("Press a number to view logs; q returns to the TUI")
+		parts = append(parts, hint)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+func (m *Model) checkRunURL(number int) string {
+	run, ok := m.checkRun(number)
+	if !ok {
+		return ""
+	}
+	return string(run.DetailsUrl)
+}
+
+func (m *Model) checkRun(number int) (data.CheckRun, bool) {
+	if number < 1 || number > 9 || m.pr == nil || m.pr.Data == nil || m.pr.Data.Primary == nil {
+		return data.CheckRun{}, false
+	}
+	commits := m.pr.Data.Enriched.Commits.Nodes
+	if len(commits) == 0 {
+		return data.CheckRun{}, false
+	}
+	current := 0
+	for _, node := range commits[0].Commit.StatusCheckRollup.Contexts.Nodes {
+		if node.Typename != "CheckRun" {
+			continue
+		}
+		current++
+		if current == number {
+			return node.CheckRun, true
+		}
+	}
+	return data.CheckRun{}, false
+}
+
+func checkRunLogArgs(run data.CheckRun, repo string) []string {
+	jobID := run.DatabaseId.String()
+	workflowName := strings.TrimSpace(string(run.CheckSuite.WorkflowRun.Workflow.Name))
+	if jobID == "" || jobID == "0" || workflowName == "" || repo == "" {
+		return nil
+	}
+	logFlag := "--log"
+	if ghchecks.IsConclusionAFailure(string(run.Conclusion)) {
+		logFlag = "--log-failed"
+	}
+	return []string{
+		"run", "view", logFlag, "--job", jobID, "-R", repo,
+	}
+}
+
+func formatCheckElapsed(duration time.Duration) string {
+	if duration < time.Minute {
+		seconds := int(math.Round(duration.Seconds()))
+		if seconds < 1 {
+			seconds = 1
+		}
+		return fmt.Sprintf("%ds", seconds)
+	}
+	if duration < time.Hour {
+		return fmt.Sprintf("%dm", int(math.Round(duration.Minutes())))
+	}
+	return fmt.Sprintf("%dh", int(math.Round(duration.Hours())))
 }
 
 func (m *Model) viewMergeStatus() (string, checkSectionStatus) {
@@ -442,7 +639,9 @@ func (sidebar *Model) renderChecks() string {
 
 	lastCommit := commits[0]
 
-	// Collect check suites that don't appear in statusCheckRollup
+	// Workflows awaiting approval or still queued don't have CheckRun objects,
+	// so show those suites separately. Running and completed checks are rendered
+	// individually from StatusCheckRollup below.
 	for _, suite := range lastCommit.Commit.CheckSuites.Nodes {
 		workflowName := strings.TrimSpace(string(suite.WorkflowRun.Workflow.Name))
 		if workflowName == "" {
@@ -453,7 +652,6 @@ func (sidebar *Model) renderChecks() string {
 		}
 
 		if suite.Conclusion == "ACTION_REQUIRED" {
-			// Workflow requires approval before it can run
 			check := lipgloss.JoinHorizontal(
 				lipgloss.Top,
 				sidebar.ctx.Styles.Common.ActionRequiredGlyph,
@@ -462,7 +660,6 @@ func (sidebar *Model) renderChecks() string {
 			)
 			awaitingApproval = append(awaitingApproval, check)
 		} else if suite.Status == "QUEUED" || suite.Status == "PENDING" || suite.Status == "WAITING" {
-			// Workflow is queued/pending (will run automatically)
 			check := lipgloss.JoinHorizontal(
 				lipgloss.Top,
 				sidebar.ctx.Styles.Common.WaitingGlyph,
@@ -568,7 +765,14 @@ func (sidebar *Model) renderChecks() string {
 	}
 
 	parts = append(parts, failures...)
-	parts = append(parts, waiting...)
+	if len(waiting) > 0 {
+		sectionHeader := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(sidebar.ctx.Theme.WarningText).
+			Render(fmt.Sprintf("In Progress Checks (%d)", len(waiting)))
+		parts = append(parts, sectionHeader)
+		parts = append(parts, waiting...)
+	}
 	parts = append(parts, rest...)
 
 	return lipgloss.JoinVertical(
