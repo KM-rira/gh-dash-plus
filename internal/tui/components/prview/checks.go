@@ -192,7 +192,10 @@ func (m *Model) viewCheckRunSummary() string {
 					if duration != "" {
 						detail += " after " + duration
 					}
-					groups[0].items = append(groups[0].items, item{name, detail, m.ctx.Styles.Common.FailureGlyph, checkNumber})
+					groups[0].items = append(
+						groups[0].items,
+						item{name, detail, m.ctx.Styles.Common.FailureGlyph, checkNumber},
+					)
 				case ghchecks.IsConclusionASkip(state):
 					groups[1].items = append(groups[1].items, item{name, "Skipped", m.ctx.Styles.Common.WaitingGlyph, checkNumber})
 				case ghchecks.IsConclusionASuccess(state):
