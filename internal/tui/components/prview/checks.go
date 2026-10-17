@@ -197,15 +197,24 @@ func (m *Model) viewCheckRunSummary() string {
 						item{name, detail, m.ctx.Styles.Common.FailureGlyph, checkNumber},
 					)
 				case ghchecks.IsConclusionASkip(state):
-					groups[1].items = append(groups[1].items, item{name, "Skipped", m.ctx.Styles.Common.WaitingGlyph, checkNumber})
+					groups[1].items = append(
+						groups[1].items,
+						item{name, "Skipped", m.ctx.Styles.Common.WaitingGlyph, checkNumber},
+					)
 				case ghchecks.IsConclusionASuccess(state):
 					detail := "Successful"
 					if duration != "" {
 						detail += " in " + duration
 					}
-					groups[3].items = append(groups[3].items, item{name, detail, m.ctx.Styles.Common.SuccessGlyph, checkNumber})
+					groups[3].items = append(
+						groups[3].items,
+						item{name, detail, m.ctx.Styles.Common.SuccessGlyph, checkNumber},
+					)
 				default:
-					groups[4].items = append(groups[4].items, item{name, state, m.ctx.Styles.Common.WaitingGlyph, checkNumber})
+					groups[4].items = append(
+						groups[4].items,
+						item{name, state, m.ctx.Styles.Common.WaitingGlyph, checkNumber},
+					)
 				}
 			}
 		case "StatusContext":
