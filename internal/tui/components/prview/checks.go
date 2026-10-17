@@ -285,8 +285,12 @@ func checkRunLogArgs(run data.CheckRun, repo string) []string {
 	if jobID == "" || jobID == "0" || workflowName == "" || repo == "" {
 		return nil
 	}
+	logFlag := "--log"
+	if ghchecks.IsConclusionAFailure(string(run.Conclusion)) {
+		logFlag = "--log-failed"
+	}
 	return []string{
-		"run", "view", "--log", "--job", jobID, "-R", repo,
+		"run", "view", logFlag, "--job", jobID, "-R", repo,
 	}
 }
 
