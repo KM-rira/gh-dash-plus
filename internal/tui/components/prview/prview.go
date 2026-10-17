@@ -145,8 +145,11 @@ func (m *Model) openCheckRun(number int) tea.Cmd {
 	}
 
 	if args := checkRunLogArgs(run, m.pr.Data.Primary.Repository.NameWithOwner); len(args) > 0 {
-		command := exec.Command("gh", args...)
-		command.Env = envWithOverride(os.Environ(), "GH_PAGER", "less -R")
+		// gh writes the run log to stdout when it is piped, so send that output
+		// directly to lnav while keeping lnav attached to the TUI's terminal.
+		commandArgs := append([]string{"-c", `gh "$@" | perl -pe 's/\b(error|failed|failure|fatal|exception)\b/\e[1;31m$1\e[0m/ig; s/\b(warning|warn)\b/\e[1;33m$1\e[0m/ig' | lnav`, "gh"}, args...)
+		command := exec.Command("sh", commandArgs...)
+		command.Env = envWithOverride(os.Environ(), "GH_PAGER", "cat")
 		return tea.ExecProcess(command, func(err error) tea.Msg {
 			if err != nil {
 				return constants.ErrMsg{Err: fmt.Errorf("viewing CI logs: %w", err)}
