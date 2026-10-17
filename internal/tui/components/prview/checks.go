@@ -177,7 +177,10 @@ func (m *Model) viewCheckRunSummary() string {
 				if elapsed != "" {
 					detail = "Started " + elapsed + " ago — " + detail
 				}
-				groups[2].items = append(groups[2].items, item{name, detail, m.ctx.Styles.Common.WaitingGlyph, checkNumber})
+				groups[2].items = append(
+					groups[2].items,
+					item{name, detail, m.ctx.Styles.Common.WaitingGlyph, checkNumber},
+				)
 			} else {
 				duration := ""
 				if !run.StartedAt.IsZero() && !run.CompletedAt.IsZero() {
@@ -232,12 +235,20 @@ func (m *Model) viewCheckRunSummary() string {
 		for _, entry := range group.items {
 			name := entry.name
 			if entry.number > 0 {
-				name += lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).Render(fmt.Sprintf(" [%d]", entry.number))
+				name += lipgloss.NewStyle().
+					Foreground(m.ctx.Theme.FaintText).
+					Render(fmt.Sprintf(" [%d]", entry.number))
 			}
 			line := lipgloss.JoinHorizontal(lipgloss.Top, entry.icon, " ", name)
 			if entry.detail != "" {
-				line = lipgloss.JoinVertical(lipgloss.Left, line,
-					lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).MarginLeft(2).Render(entry.detail))
+				line = lipgloss.JoinVertical(
+					lipgloss.Left,
+					line,
+					lipgloss.NewStyle().
+						Foreground(m.ctx.Theme.FaintText).
+						MarginLeft(2).
+						Render(entry.detail),
+				)
 			}
 			parts = append(parts, lipgloss.NewStyle().MarginLeft(2).Render(line))
 		}
